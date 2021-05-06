@@ -29,11 +29,15 @@ for i = 0 to numberofcells - 1 do
     Hashtbl.add richnessTable index richness ;
     Hashtbl.add neighbourTable index [neigh0; neigh1; neigh2; neigh3; neigh4; neigh5];
 done;
+let getIncomes trees = Array.fold_left (+) 0 @@ Array.mapi (fun i x -> x*i) trees in
 
+
+let maxDay = 5 in
 
 (* game loop *)
 while true do
     let treeTable = Hashtbl.create 37 in
+    let getTree x = Hashtbl.find treeTable x in
     let day = int_of_string (input_line stdin) in (* the game lasts 24 days: 0-23 *)
     let nutrients = int_of_string (input_line stdin) in (* the base score you gain from the next COMPLETE action *)
     (* sun: your sun points *)
@@ -43,7 +47,9 @@ while true do
     (* oppscore: opponent's score *)
     (* oppiswaiting: whether your opponent is asleep until the next day *)
     let oppsun, oppscore, oppiswaiting = Scanf.sscanf (input_line stdin) " %d  %d  %d" (fun oppsun oppscore oppiswaiting -> (oppsun, oppscore, oppiswaiting = 1)) in
-    let numberoftrees = int_of_string (input_line stdin) in (* the current amount of trees *)
+    let numberoftrees = int_of_string (input_line stdin) and (* the current amount of trees *)
+    sizeCount = Array.make 4 0 in
+    let acc = ref 0 in
     for i = 0 to numberoftrees - 1 do
         (* cellindex: location of this tree *)
         (* size: size of this tree: 0-3 *)
@@ -51,19 +57,26 @@ while true do
         (* isdormant: 1 if this tree is dormant *)
         let tree = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d" (fun cellindex size ismine isdormant -> {pos=cellindex; size=size; ismine = (ismine = 1); isdormant = (isdormant = 1)}) in
         Hashtbl.add treeTable tree.pos tree;
+        if tree.ismine then (
+            sizeCount.(tree.size) <- sizeCount.(tree.size)+1;
+            incr acc
+        )
     done;
+    let treeCount = !acc in
     let numberofpossiblemoves = int_of_string (input_line stdin) in
     let actionlist =
     let rec aux n = if n=numberofpossiblemoves then [] else (action (input_line stdin) :: aux (n+1))
     in aux 0 in
-
-
-
-    (* Write an action using print_endline *)
-    (* To debug: prerr_endline "Debug message"; *)
-
+    let incomes = getIncomes sizeCount in
+    let getScore = function
+        | COMPLETE t -> (sun + incomes)/3 + richness t
+        | GROW t -> max 0 @@ 10 - 2*sizeCount.((getTree t).size+1) + richness t
+        | WAIT -> -100 in
+    let sortedAction = List.sort (fun x y -> -compare (getScore x) (getScore y)) actionlist in
+    match sortedAction with
+    | x :: xs -> print_endline @@ toString x
+    | _ -> failwith "no action found"
 
     (* GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message> *)
-    print_endline "WAIT";
-    ();
+
 done;;
