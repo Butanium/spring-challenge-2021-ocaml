@@ -3,10 +3,11 @@
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
 type action = GROW of int | COMPLETE of int | WAIT;;
 let action s = if s.[0] = 'W' then WAIT else (
-    let act, t = Scanf.sscanf (input_line stdin) "%s %d" (fun a b -> a,b) in
+    let act, t = Scanf.sscanf s "%s %d" (fun a b -> a,b) in
     match act.[0] with
     | 'G' -> GROW t
     | 'C' -> COMPLETE t
+    | _ -> failwith "not implemented"
     )
 
 and toString = function
@@ -49,14 +50,13 @@ while true do
         (* ismine: 1 if this is your tree *)
         (* isdormant: 1 if this tree is dormant *)
         let tree = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d" (fun cellindex size ismine isdormant -> {pos=cellindex; size=size; ismine = (ismine = 1); isdormant = (isdormant = 1)}) in
-        ();
+        Hashtbl.add treeTable tree.pos tree;
     done;
-
     let numberofpossiblemoves = int_of_string (input_line stdin) in
-    for i = 0 to numberofpossiblemoves - 1 do
-        let possiblemove = input_line stdin in
-        ();
-    done;
+    let actionlist =
+    let rec aux n = if n=numberofpossiblemoves then [] else (action (input_line stdin) :: aux (n+1))
+    in aux 0 in
+
 
 
     (* Write an action using print_endline *)
@@ -66,4 +66,4 @@ while true do
     (* GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message> *)
     print_endline "WAIT";
     ();
-done;
+done;;
