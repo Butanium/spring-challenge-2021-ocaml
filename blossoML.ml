@@ -14,10 +14,10 @@ and toString = function
     | COMPLETE t -> Printf.sprintf "COMPLETE %d" t
     | WAIT -> "WAIT" in
 
-let neighbourTable = Hashtbl.create()
-and richnessTable = Hashtbl.create() in
-let getNeighbours x = Hashtbl.find x neighbourTable
-and richness x = Hashtbl.find x richnessTable in
+let neighbourTable = Hashtbl.create 37
+and richnessTable = Hashtbl.create 37 in
+let getNeighbours x = Hashtbl.find neighbourTable x
+and richness x = Hashtbl.find richnessTable x  in
 
 let numberofcells = int_of_string (input_line stdin) in (* 37 *)
 for i = 0 to numberofcells - 1 do
@@ -25,14 +25,14 @@ for i = 0 to numberofcells - 1 do
     (* richness: 0 if the cell is unusable, 1-3 for usable cells *)
     (* neigh0: the index of the neighbouring cell for each direction *)
     let index, richness, neigh0, neigh1, neigh2, neigh3, neigh4, neigh5 = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d  %d  %d  %d  %d" (fun index richness neigh0 neigh1 neigh2 neigh3 neigh4 neigh5 -> (index, richness, neigh0, neigh1, neigh2, neigh3, neigh4, neigh5)) in
-    Hashtbl.add index richness richnessTable;
-    Hashtbl.add index [neigh0, neigh1, neigh2, neigh3, neigh4, neigh5];
+    Hashtbl.add richnessTable index richness ;
+    Hashtbl.add neighbourTable index [neigh0; neigh1; neigh2; neigh3; neigh4; neigh5];
 done;
 
 
 (* game loop *)
 while true do
-    let treeTable = Hashtbl.create() in
+    let treeTable = Hashtbl.create 37 in
     let day = int_of_string (input_line stdin) in (* the game lasts 24 days: 0-23 *)
     let nutrients = int_of_string (input_line stdin) in (* the base score you gain from the next COMPLETE action *)
     (* sun: your sun points *)
