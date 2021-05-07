@@ -1,43 +1,91 @@
 (* Auto-generated code below aims at helping you parse *)
 (* the standard input according to the problem statement. *)
+module IntSet = Set.Make(Int);;
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
-type action = GROW of int | COMPLETE of int | WAIT;;
-let action s = if s.[0] = 'W' then WAIT else (
-    let act, t = Scanf.sscanf s "%s %d" (fun a b -> a,b) in
-    match act.[0] with
-    | 'G' -> GROW t
-    | 'C' -> COMPLETE t
-    | _ -> failwith "not implemented"
-    )
+let makeSeed p = {pos=p; size=0; ismine=true; isdormant=true};;
 
-and toString = function
+type action = GROW of int | COMPLETE of int | WAIT |SEED of int*int;;
+let action s = match s.[0] with
+    | 'W' -> WAIT
+    | 'G' ->  GROW (Scanf.sscanf s "%s %d" (fun _ b -> b))
+    | 'C' -> COMPLETE (Scanf.sscanf s "%s %d" (fun _ b -> b))
+    | 'S' -> let a,b = Scanf.sscanf s "%s %d %d" (fun _ a b -> a,b) in SEED (a,b)
+    | _ -> failwith @@ s^" is an invalid action"
+
+
+(* Convert an action to a string
+toString (COMPLETE 3) return "COMPLETE 3" *)
+and toString = function (* a good exemple on how you can
+match actions *)
     | GROW t -> Printf.sprintf "GROW %d" t
     | COMPLETE t -> Printf.sprintf "COMPLETE %d" t
-    | WAIT -> "WAIT" in
-
-let neighbourTable = Hashtbl.create 37
-and richnessTable = Hashtbl.create 37 in
-let getNeighbours x = Hashtbl.find neighbourTable x
-and richness x = Hashtbl.find richnessTable x  in
+    | WAIT -> "WAIT"
+    | SEED (a,b) -> Printf.sprintf "SEED %d %d" a b
+    in
 
 let numberofcells = int_of_string (input_line stdin) in (* 37 *)
+
+ (* create an array which contains all your neighbours index (-1 meaning that you don't have neighbours in this direction) *)
+let neighbourTable = Array.make numberofcells [||]
+
+(* create an array which will associate each cell to
+its richness *)
+and richnessTable = Array.make numberofcells 0  in
+(* return the neighbour array *)
+let getNeighbours x = neighbourTable.(x)
+(* return the richness of the tile *)
+and richness x = richnessTable.(x) in
+
 for i = 0 to numberofcells - 1 do
     (* index: 0 is the center cell, the next cells spiral outwards *)
     (* richness: 0 if the cell is unusable, 1-3 for usable cells *)
     (* neigh0: the index of the neighbouring cell for each direction *)
-    let index, richness, neigh0, neigh1, neigh2, neigh3, neigh4, neigh5 = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d  %d  %d  %d  %d" (fun index richness neigh0 neigh1 neigh2 neigh3 neigh4 neigh5 -> (index, richness, neigh0, neigh1, neigh2, neigh3, neigh4, neigh5)) in
-    Hashtbl.add richnessTable index richness ;
-    Hashtbl.add neighbourTable index [neigh0; neigh1; neigh2; neigh3; neigh4; neigh5];
+    let index, richness, neighbours = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d  %d  %d  %d  %d" (fun index richness neigh0 neigh1 neigh2 neigh3 neigh4 neigh5 -> (index, richness, [|neigh0; neigh1; neigh2; neigh3; neigh4; neigh5|])) in
+    (* fill the dictionnaries *)
+    richnessTable.(index) <- richness ;
+    neighbourTable.(index) <- neighbours;
 done;
+
 let getIncomes trees = Array.fold_left (+) 0 @@ Array.mapi (fun i x -> x*i) trees in
 
 
-let maxDay = 5 in
+let maxDay = 23. in
+
+
 
 (* game loop *)
 while true do
     let treeTable = Hashtbl.create 37 in
-    let getTree x = Hashtbl.find treeTable x in
+    let getTreeOpt x = Hashtbl.find_opt treeTable x and
+    getTree x = Hashtbl.find treeTable x in
+    let getNearTrees pos =
+        let queue = Queue.create() in
+        Queue.add (pos, 0) queue;
+        let rec aux ignore =
+            if Queue.is_empty queue then [] else
+            let pos, depth = Queue.take queue in
+            if depth > 3 then [] else
+            let l = aux @@ IntSet.union (Array.fold_left (fun acc n -> if n >= 0 && not (IntSet.mem n ignore) then
+                                     (Queue.add (n,depth+1) queue; IntSet.add n acc)
+                                     else acc) IntSet.empty @@ getNeighbours pos)
+                                     (IntSet.add pos ignore) in
+            match getTreeOpt pos with
+            | None -> l
+            | Some x -> x::l
+        in aux IntSet.empty
+    in
+    let visibility tree =
+        let rec aux pos acc dir = if acc>3 || pos = -1 then 0
+            else ((match getTreeOpt pos with
+                | None -> 0
+                | Some x -> tree.size - 2*x.size - 6 + acc)
+                + aux neighbourTable.(pos).(dir) (acc+1) dir
+            )
+        and loop i acc = if i = 6 then acc else loop (i+1) (acc + aux tree.pos 0 i)
+        in loop 0 0
+    in
+
+
     let day = int_of_string (input_line stdin) in (* the game lasts 24 days: 0-23 *)
     let nutrients = int_of_string (input_line stdin) in (* the base score you gain from the next COMPLETE action *)
     (* sun: your sun points *)
@@ -69,10 +117,17 @@ while true do
     in aux 0 in
     let incomes = getIncomes sizeCount in
     let getScore = function
-        | COMPLETE t -> (sun + incomes)/3 + richness t
-        | GROW t -> max 0 @@ 10 - 2*sizeCount.((getTree t).size+1) + richness t
-        | WAIT -> -100 in
+        | COMPLETE t ->float_of_int(richness t (* - (visibility (getTree t))/5*)) -. 1. +.
+            10. ** (((float_of_int day) /. maxDay)**1.)
+        | GROW t -> float_of_int @@ max 0 @@ 10 - 2*sizeCount.((getTree t).size+1) + 2* (richness t)
+        | WAIT -> -100.
+        | SEED (start, target) -> float_of_int @@ 5*(richness target) - 2*sizeCount.(0) + (List.fold_left
+            (fun acc t -> acc + if t.ismine then -1 else 1) 0 (getNearTrees target))
+            (* +let v = visibility (makeSeed target) in if v=0 then 100 else v *)
+
+        in
     let sortedAction = List.sort (fun x y -> -compare (getScore x) (getScore y)) actionlist in
+    List.iter (fun x -> prerr_endline @@ Printf.sprintf "%s : %f" (toString x) (getScore x)) sortedAction;
     match sortedAction with
     | x :: xs -> print_endline @@ toString x
     | _ -> failwith "no action found"
