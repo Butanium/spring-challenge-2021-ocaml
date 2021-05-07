@@ -9,8 +9,8 @@ let myTreePos = myTree.pos *)
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
 
 (* you can create an action like this :
-let a = GROW 2 and a2 = COMPLETE 3 and a3 = WAIT or
-use the action function below *)
+let a = GROW 2 and a2 = COMPLETE 3 and a3 = WAIT 
+or use the action function below *)
 type action = GROW of int | COMPLETE of int | WAIT;;
 
 (* Convert an action string to an action type :
