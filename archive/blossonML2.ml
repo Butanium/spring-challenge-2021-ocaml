@@ -1,8 +1,3 @@
-(* Auto-generated code below aims at helping you parse *)
-(* the standard input according to the problem statement. *)
-(* TODO get shadow diff for complete/grow tree *)
-(* TODO optimize plants at the end, we need less seeds and more trees *)
-(* TODO add actions of dormant trees to the list *)
 let f = float_of_int;;
 module IntSet = Set.Make(Int);;
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
