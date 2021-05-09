@@ -1,5 +1,9 @@
 (* Auto-generated code below aims at helping you parse *)
 (* the standard input according to the problem statement. *)
+(* TODO get shadow diff for complete/grow tree *)
+(* TODO optimize plants at the end, we need less seeds and more trees *)
+(* TODO add actions of dormant trees to the list *)
+let f = float_of_int;;
 module IntSet = Set.Make(Int);;
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
 let makeSeed p = {pos=p; size=0; ismine=true; isdormant=true};;
@@ -49,8 +53,8 @@ done;
 let getIncomes trees = Array.fold_left (+) 0 @@ Array.mapi (fun i x -> x*i) trees in
 
 
-let maxDay = 23. in
-
+let maxDayf = 23. and
+maxDay = 23 in
 
 
 (* game loop *)
@@ -87,6 +91,8 @@ while true do
 
 
     let day = int_of_string (input_line stdin) in (* the game lasts 24 days: 0-23 *)
+    prerr_endline @@ Printf.sprintf "day : %d/%d" day maxDay;
+    let dayf = f day in
     let nutrients = int_of_string (input_line stdin) in (* the base score you gain from the next COMPLETE action *)
     (* sun: your sun points *)
     (* score: your current score *)
@@ -96,7 +102,8 @@ while true do
     (* oppiswaiting: whether your opponent is asleep until the next day *)
     let oppsun, oppscore, oppiswaiting = Scanf.sscanf (input_line stdin) " %d  %d  %d" (fun oppsun oppscore oppiswaiting -> (oppsun, oppscore, oppiswaiting = 1)) in
     let numberoftrees = int_of_string (input_line stdin) and (* the current amount of trees *)
-    sizeCount = Array.make 4 0 in
+    sizeCount = Array.make 4 0
+    and oppsizeCount = Array.make 4 0 in
     let acc = ref 0 in
     for i = 0 to numberoftrees - 1 do
         (* cellindex: location of this tree *)
@@ -108,8 +115,15 @@ while true do
         if tree.ismine then (
             sizeCount.(tree.size) <- sizeCount.(tree.size)+1;
             incr acc
+        ) else (
+            oppsizeCount.(tree.size) <-  oppsizeCount.(tree.size) + 1
         )
     done;
+     let a x =
+        Array.fold_left (+) 0 @@ Array.mapi (fun i x -> (i+1)*x) x in
+    prerr_endline @@ Printf.sprintf "tree advantage : %d/%d"
+        (a sizeCount) (a oppsizeCount);
+
     let treeCount = !acc in
     let numberofpossiblemoves = int_of_string (input_line stdin) in
     let actionlist =
@@ -117,12 +131,15 @@ while true do
     in aux 0 in
     let incomes = getIncomes sizeCount in
     let getScore = function
-        | COMPLETE t ->float_of_int(richness t (* - (visibility (getTree t))/5*)) -. 1. +.
-            10. ** (((float_of_int day) /. maxDay)**1.)
-        | GROW t -> float_of_int @@ max 0 @@ 10 - 2*sizeCount.((getTree t).size+1) + 2* (richness t)
-        | WAIT -> -100.
-        | SEED (start, target) -> float_of_int @@ 5*(richness target) - 2*sizeCount.(0) + (List.fold_left
-            (fun acc t -> acc + if t.ismine then -1 else 1) 0 (getNearTrees target))
+        | COMPLETE t -> f(richness t (* - (visibility (getTree t))/5 *) ) -. 1. +.
+            20. ** (((f day) /. maxDayf)**2.) +. (max 0. (f (oppscore - score -20)))
+            +. if oppscore - score > -40 then f (oppsizeCount.(3)*2) else 0.
+        | GROW t -> let tree = getTree t in if maxDayf -. dayf +. f tree.size < 3. then -1. else f @@ max 0 @@ 10 - 2*sizeCount.(tree.size+1) + 2* (richness t)
+        | WAIT -> 0.001
+        | SEED (start, target) -> if maxDayf -. dayf < 3. then -1. else
+        -. 0.5*. f (sizeCount.(1)) +.
+        (f @@ (richness target) - 2*sizeCount.(0)  + 0*(List.fold_left
+            (fun acc t -> acc + if t.ismine then -1 else 0) 0 (getNearTrees target)))
             (* +let v = visibility (makeSeed target) in if v=0 then 100 else v *)
 
         in
