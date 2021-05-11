@@ -1,6 +1,6 @@
-(* TODO get shadow diff for complete/grow tree *)
-(* TODO optimize plants at the end, we need less seeds and more trees *)
-(* TODO seed where there are no allies if you can (not higher priority than richness I think) *)
+(* TODO (2) get shadow diff for complete/grow tree *)
+(* TODO (3) optimize plants at the end, we need less seeds and more trees *)
+(* TODO (1) seed where there are no allies if you can  *)
 let f = float_of_int;;
 module IntSet = Set.Make(Int);;
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
@@ -97,7 +97,7 @@ let getActionTrees trees =
 and getPrice sizeArrays = function
     | WAIT -> 0
     | GROW t -> let tree = getTree t in (match tree.size with | 0 -> 1 | 1 -> 3 | 2 -> 7 |_-> failwith "illegal size") + sizeArrays.(tree.size+1)
-    | SEED (_,_) -> sizeArrays.(0)
+    | SEED _ -> sizeArrays.(0)
     | COMPLETE _ -> 4
 and getTarget = function
     | GROW t -> Some t
@@ -115,6 +115,18 @@ in
 
 let richBonus t = 2*(richness t - 1) in
 
+let getAShadow t =
+    let rec aux (pos:int) dir depth acc =
+        let n =  (getNeighbours pos).(dir) in
+        if n = -1 || depth > 3 then acc else (
+            aux n dir (depth + 1) @@
+            match getTreeOpt n with
+            | Some t when t.ismine -> acc +. 1. /. (1. +. f( max 0 (depth - t.size)))
+            | _ -> acc 
+        )
+    and loop i acc = if i = 6 then acc else
+        loop (i+1) (acc +. aux t i 1 0.)
+    in -. exp (loop 0 0. /. 2.) /. 5. -. 1. /. 5. in
 
 
 
@@ -164,15 +176,15 @@ while true do
     let possible = isPossible sun sizeCount in
     let getScore a = (
         match a with
-        | COMPLETE t -> f(richBonus t) -. 1. +.
+        | COMPLETE t -> f(richBonus t) -. 4. +.
             20. ** (((f day) /. maxDayf)**2.) +. (max 0. (f (oppscore - score -20)))
             +. if oppscore - score > -40 then f (oppsizeCount.(3)*2) else 0.
         | GROW t -> let tree = getTree t in if maxDayf -. dayf +. f tree.size < 3. then -1. else f @@ max 0 @@ 10 -
             2*sizeCount.(tree.size+1) + 2* (richBonus t)
         | WAIT -> 0.001
         | SEED (start, target) -> if maxDayf -. dayf < 3. then -1. else
-        -. 0.5*. f (sizeCount.(1)) +. f ((richBonus target) - 2*sizeCount.(0))
-        ) *. if (match a with | SEED (a,b) -> true | _ -> false) || possible a then 1. else 0.1
+        -. 0.5*. f (sizeCount.(1)) +. f ((richBonus target) - 2*sizeCount.(0)) +. getAShadow target
+        ) *. if (match a with | SEED _ -> true | _ -> false) || possible a then 1. else 0.1
     in
 
 
