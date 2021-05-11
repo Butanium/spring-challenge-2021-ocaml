@@ -1,6 +1,7 @@
-(* TODO (2) get shadow diff for complete/grow tree *)
-(* TODO (3) optimize plants at the end, we need less seeds and more trees *)
-(* TODO (1) seed where there are no allies if you can  *)
+
+(* TODO (1) optimize plants at the end, we need less seeds and more trees
+ adjust the optimization function *)
+
 let f = float_of_int;;
 module IntSet = Set.Make(Int);;
 type tree = {pos : int; size : int; ismine : bool; isdormant : bool};;
