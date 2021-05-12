@@ -16,8 +16,7 @@ let action s = match s.[0] with
     | _ -> failwith @@ s^" is an invalid action"
 
 
-(* Convert an action to a string
-toString (COMPLETE 3) return "COMPLETE 3" *)
+
 and toString = function (* a good exemple on how you can
 match actions *)
     | GROW t -> Printf.sprintf "GROW %d" t
@@ -56,24 +55,10 @@ maxDay = 23 in
 let treeTable = Hashtbl.create 37 in
 let getTreeOpt x = Hashtbl.find_opt treeTable x and
     getTree x = Hashtbl.find treeTable x in
-let getNearTrees pos maxDepth =
-    let queue = Queue.create() in
-    Queue.add (pos, 0) queue;
-    let rec aux ignore =
-        if Queue.is_empty queue then [] else
-        let pos, depth = Queue.take queue in
-        if depth > maxDepth then [] else
-        let l = aux @@ IntSet.union (Array.fold_left (fun acc n -> if n >= 0 && not (IntSet.mem n ignore) then
-                                 (Queue.add (n,depth+1) queue; IntSet.add n acc)
-                                 else acc) IntSet.empty @@ getNeighbours pos)
-                                 (IntSet.add pos ignore) in
-        match getTreeOpt pos with
-        | None -> l
-        | Some x -> x::l
-    in aux IntSet.empty
 
+(* getNearTrees deleted *)
 (* getVisibility deleted *)
-in
+
 let getNearTiles pos maxDepth =
     let queue = Queue.create() in
     Queue.add (pos, 0) queue;
