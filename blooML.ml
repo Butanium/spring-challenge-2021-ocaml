@@ -122,7 +122,7 @@ let getPotentialAllyShadow tree =
             aux n dir (depth + 1) @@
             match getTreeOpt n with
             (* if t.size < depth then less malus *)
-            | Some t when t.ismine -> acc +. 1. /. (1. +. f( max 0 (depth - t.size)))
+            | Some t when t.ismine -> acc +. 1. /. (1. +. 2. *. f( max 0 (depth - t.size)))
             | _ -> acc
         )
     and loop i acc = if i = 6 then acc else
@@ -183,6 +183,7 @@ while true do
     let a x =
         Array.fold_left (+) 0 @@ Array.mapi (fun i x -> (i+1)*x) x in
     let advDebug = Printf.sprintf "%d/%d" (a sizeCount) (a oppsizeCount) in
+    let enTreeRatio = f (a oppsizeCount) /. f (a sizeCount) in
     prerr_endline @@ "tree advantage : "^advDebug;
     let numberofpossiblemoves = int_of_string (input_line stdin) in
     let actionlist =
@@ -192,14 +193,15 @@ while true do
     let getScore a = let s1,s2 = (
         match a with
         | COMPLETE t -> let nb3 = sizeCount.(3) in -. 4. +. 20. ** ((dayf/. maxDayf)**2.) +.
-            (if nb3>2 then f nb3 else 0.) -. getPotentialAllyShadow t +. getSelfShadow t , f (richBonus t)
-        | SEED (x,y) -> if maxDay - day < 3 then -1. , 0. else 10. *. (exp (-.2.4 *.(f sizeCount.(0))**2.))
-        , 0.25 *. f(richBonus y) +. getPotentialAllyShadow y
+            (if nb3>2 then f nb3 else 0.)+. (if day=maxDay then 10. else( -. getPotentialAllyShadow t +. getSelfShadow t -. 2.) +. (min 0. (4. *.(1. -. enTreeRatio)))), f (richBonus t)
+        | SEED (x,y) -> if maxDay - day < 3 then -1. , 0. else (if day <= 1 then 0. else 10.) *. (exp (-.2.4 *.(f sizeCount.(0))**2.))
+        , 0.25 *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
         | GROW t -> let size = (getTree t).size in if maxDay - day + size < 3 then -1. , 0. else 5. +. 2. *.(f size -. 1.5)*.dayf/.maxDayf -. f sizeCount.(size+1)
          -. getSelfShadowSize t (size+1) +. getSelfShadowSize t size, f (richBonus t)
         | WAIT -> 0., 0.
 
-        ) in s1 *. (if (match a with | SEED _ -> true | _ -> false) || possible a then 1. else 0.5), s2
+        ) in s1 *. (if (match a with | SEED _ -> true | _ -> false) || possible a then 1. else 0.5),
+         if (match a with SEED _ -> true | _ ->false) && not @@ possible a then 0.5 *. s2 else s2
     in
 
 
