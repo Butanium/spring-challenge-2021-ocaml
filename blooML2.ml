@@ -1,6 +1,4 @@
-
 (* TODO adjust endGame, we could optimize it *)
-
 
 let f = float_of_int;;
 module IntSet = Set.Make(Int);;
@@ -14,8 +12,6 @@ let action s = match s.[0] with
     | 'C' -> COMPLETE (Scanf.sscanf s "%s %d" (fun _ b -> b))
     | 'S' -> let a,b = Scanf.sscanf s "%s %d %d" (fun _ a b -> a,b) in SEED (a,b)
     | _ -> failwith @@ s^" is an invalid action"
-
-
 
 and toString = function (* a good exemple on how you can
 match actions *)
@@ -39,9 +35,6 @@ let getNeighbours x = neighbourTable.(x)
 and richness x = richnessTable.(x) in
 
 for i = 0 to numberofcells - 1 do
-    (* index: 0 is the center cell, the next cells spiral outwards *)
-    (* richness: 0 if the cell is unusable, 1-3 for usable cells *)
-    (* neigh0: the index of the neighbouring cell for each direction *)
     let index, richness, neighbours = Scanf.sscanf (input_line stdin) " %d  %d  %d  %d  %d  %d  %d  %d" (fun index richness neigh0 neigh1 neigh2 neigh3 neigh4 neigh5 -> (index, richness, [|neigh0; neigh1; neigh2; neigh3; neigh4; neigh5|])) in
     (* fill the dictionnaries *)
     richnessTable.(index) <- richness ;
@@ -113,24 +106,6 @@ let getPotentialAllyShadow tree =
     and loop i acc = if i = 6 then acc else
         loop (i+1) (acc +. aux tree i 1 0.)
     in -. exp (loop 0 0. /. 2.) /. 5. +. 1. /. 5. in
-
-let getSelfShadowSize tree treeSize =
-    let rec aux (pos:int) dir depth ((maxHeight,hPos),acc) =
-        let n =  (getNeighbours pos).(dir) in
-        if n = -1 || depth > treeSize then acc else (
-            aux n dir (depth + 1) @@
-            match getTreeOpt n with
-            (* if t.size < depth then less malus *)
-            | Some t -> (if t.size >= maxHeight then t.size, depth else maxHeight, hPos),
-                if t.size > maxHeight || depth - hPos > maxHeight then acc + (if t.ismine then t.size else -t.size)
-                else acc
-            | _ -> (maxHeight,hPos),acc
-        )
-    and loop i acc = if i = 6 then acc else
-        loop (i+1) (acc + aux tree i 1 ((0,0),0))
-    in f @@ loop 0 0 in
-let getSelfShadow tree =
-    getSelfShadowSize tree (match getTreeOpt tree with | None -> -1 | Some t -> t.size)  in
 
 let getNextDir day = (day + 1) mod 6 and
 oppDir dir = (dir + 3) mod 6 in
