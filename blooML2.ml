@@ -186,7 +186,8 @@ while true do
     let actionlist =
     let rec aux n = if n = numberofpossiblemoves then () else let _ = read_line() in aux (n+1)
     in aux 0 in
-    let possible = isPossible sun sizeCount in
+    let possible = isPossible sun sizeCount
+    in
     let getScore a = let s1,s2 = (
         match a with
         | COMPLETE t -> let nb3 = sizeCount.(3) in -. 4. +. 20. ** ((dayf/. maxDayf)**2.) +.
@@ -194,13 +195,14 @@ while true do
             +. 2. +.  getDiffF (getTree t) (makeSeed t) 2 (min 2 (maxDay-day)) +. max 0. (f sun -. 5.),
             f (richBonus t)
         | SEED (x,y) -> if maxDay - day < 3 then -1. , 0. else (if day <= 1 then 0. else 10.) *. (exp (-.2.4 *.(f sizeCount.(0))**2.))
-        , 0.25 *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
+        , 0.01 *. exp (5. *.(dayf /. maxDayf)**1.7) *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
         | GROW t ->let tree = getTree t in let size = tree.size in if maxDay - day + size < 3 then -1. , 0. else 5. +. 2. *.(f size -. 1.5)*.dayf/.maxDayf -. f sizeCount.(size+1)
          +. 2. +. getDiffF tree ({pos=t; size=size + 1; ismine=true; isdormant=true}) (min 2 (maxDay-day)) day , f (richBonus t)
         | WAIT -> 0., 0.
 
-        ) in s1 *. (if (match a with | SEED _ -> true | _ -> false) || possible a then 1. else 0.5),
-         if (match a with SEED _ -> true | _ ->false) && not @@ possible a then 0.5 *. s2 else s2
+        ) in if possible a then s1,s2 else (
+            if (match a with | SEED _ -> true | _ -> false) then (s1, 0.99 *. s2) else (0.5 *. s1, 0.5 *. s2)
+        )
     in
 
     let myActions = getActionTrees myTrees in
@@ -212,10 +214,14 @@ while true do
     List.iter (fun x -> let s1,s2 = getScore x in  prerr_endline @@ Printf.sprintf "%s : %f, %f | %s" (toString x) s1 s2
         (if possible x then "Y" else "N")) sortedAction;
 
-    let comment = Printf.sprintf "time: %f " (Sys.time() -. startTime) ^ advDebug in
+
+
+    let comment = Printf.sprintf "time: %f" (Sys.time() -. startTime) ^ advDebug in
+
+
     match sortedAction with
     | x :: xs -> if possible x then print_endline @@ (toString x) ^" "^comment
-                 else print_endline @@ "WAIT"^" WAIT FOR "^(toString x)^" "^comment
+                 else print_endline @@ "WAIT"^(if numberofpossiblemoves>1 then (" WAIT FOR "^(toString x)) else "")^" "^comment
     | _ -> failwith "no action found"
 
     (* GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message> *)
