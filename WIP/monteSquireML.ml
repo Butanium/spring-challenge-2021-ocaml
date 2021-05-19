@@ -12,7 +12,8 @@ module RndQ = struct
         t.size <- t.size - 1;
         r
 end;;
-
+let mapInPlace f arr = Array.iteri (fun i x -> arr.(i) <- f x) arr;;
+let copyInPlace model cont = Array.iteri (fun i x -> cont.(i) <- x) model;;
 
 let f = float_of_int;;
 module IntSet = Set.Make(Int);;
@@ -20,13 +21,13 @@ type mutableTree = {pos:int; mutable size : int; mutable owner : bool; mutable i
 let makeSeed p = {pos=p; size=0; ismine=true; isdormant=true};;
 
 type action = GROW of int | COMPLETE of int | WAIT |SEED of int*int;;
-type gameState = {activePlayer : int; opponentActive : bool; day : int; playerScores : int array;
-        playerSuns : int array; nutrients : int};;
+type gameState = {activePlayer : int; opponentActive : bool; day : int; playerScores : int*int;
+        playerSuns : int*int; nutrients : int};;
+type mctNode = ROOT of rootNode | N of rootNode * {action : action; mutable father : mctNode;} and
+rootNode  = {mutable visit : float; mutable win : float; mutable unexplored : action RndQ.t; mutable sons : mctNode list;  game : gameState;};;
 
-type mtcNode = ROOT of rootNode | N of rootNode * {action : action; mutable father : mtcNode;} and
-rootNode  = {mutable visit : float; mutable win : float; mutable unexplored : action RndQ.t; mutable sons : mtcNode list;  game : gameState;};;
-
-
+let getT i t = if i = 0 then fst t else snd t;;
+let (++) (x1,y1) (x2,y2) = x1 + x2, y1 + y2;;
 let toString = function
     | GROW t -> Printf.sprintf "GROW %d" t
     | COMPLETE t -> Printf.sprintf "COMPLETE %d" t
@@ -62,12 +63,14 @@ maxDay = 23 in
 (* ________________ MAP Init ________________*)
 let treeArray = Array.init numberofcells (fun i -> {pos = i; size = -1; owner = -1; isdormant = false})
 and playerTrees = Array.init 2 (fun _ -> Array.make 4 0) in
-
-let getTreeOpt t = let tree = treeArray.(t) in if tree.size>=0 then Some tree else None
+let treeArrayPO = Array.copy treeArray and playerTreesPO = Array.copy playerTrees in
+let initPOArrays() = copyInPlace treeArray treeArrayPO; copyInPlace playerTrees playerTreesPO in
+let getPlayerTreeCount player playerTrees = Array.fold_left (+) 0 playerTrees.(player)
+and getTreeOpt t = let tree = treeArray.(t) in if tree.size>=0 then Some tree else None
 and getTree t = treeArray.(t)
 and getPlayerTrees player = Array.fold_left (fun acc x -> if x.owner=player then x::acc else acc) [] treeArray
 and getPlayerActiveTrees player =
-    Array.fold_left (fun acc x -> if x.owner=player && not x.isdormant then x::acc else acc) [] game.treeArray
+    Array.fold_left (fun acc x -> if x.owner=player && not x.isdormant then x::acc else acc) [] treeArray
 in
 
 
@@ -83,8 +86,6 @@ let getNearTiles pos maxDepth =
                 IntSet.empty @@ getNeighbours pos) (IntSet.add pos ignore)) (if depth <>0 then pos :: acc else acc)
     in aux IntSet.empty []
 in
-
-
 
 
 
@@ -105,7 +106,8 @@ let getPotentialAllyShadow tree =
     in -. exp (loop 0 0. /. 2.) /. 5. +. 1. /. 5. in
 
 let getNextDir day = (day + 1) mod 6 and
-oppDir dir = (dir + 3) mod 6 in
+oppDir dir = (dir + 3) mod 6
+and getDir = day mod 6 in
 let rec origin pos dir =
     match (getNeighbours pos).(oppDir dir) with
         | -1 -> pos
@@ -143,8 +145,7 @@ let getDiffF treeInit newTree turns day =
     f (getDiff treeInit newTree turns day)
 in
 
-let getPrice player =
-    let sizeArrays = playerTrees.(player) in
+let getPrice sizeArrays =
     function
     | WAIT -> 0
     | GROW t -> let tree = getTree t in (match tree.size with | 0 -> 1 | 1 -> 3 | 2 -> 7 |_-> failwith "illegal size") + sizeArrays.(tree.size+1)
@@ -155,55 +156,91 @@ and getTarget = function
     | COMPLETE t -> Some t
     | SEED (t,_) -> Some t
     | WAIT -> None
-and getNoneSeedActions trees =
-    let rec aux acc = function
-        | [] -> acc
-        | t :: ts -> aux (if t.size < 3 then GROW t.pos else COMPLETE t.pos) :: acc
-    in WAIT :: aux [] trees
+
 and getSeedScore player day = function
-    | SEED (x,y) -> if maxDay - day < 3 then -1. , 0. else (if day <= 1 then 0. else 10.)
-        *. (exp (-.2.4 *.(f playerTrees.(player).(0))**2.)), 0.01 *. exp (5. *.(dayf /. maxDayf)**1.7) *. f(richBonus y)
-        +. 2. *.getPotentialAllyShadow y
+    | SEED (x,y) -> 0.01 *. exp (5. *.(dayf /. maxDayf)**1.7) *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
     | err -> raise Invalid_argument @@ toString err
 in
-let getBestSeedAction ?(enemySeed=None) activeTrees =
-        let test x = match enemySeed with | None -> false | Some t -> t=x in
-        let rec aux = function
-            | [] -> WAIT, neg_infinity
-            | t :: ts -> List.fold_left
-                (fun ((_, accS) as acc) x -> if richness x > 0 && (test x || getTreeOpt x = None) then
-                let score = getSeedScore (SEED (t.pos, x)) in if score > accS then (x, score) else acc else acc)
-                (aux ts) @@ getNearTiles t.pos t.size
-        in match aux activeTrees with
-            | WAIT, _ -> None
-            | a, _ -> Some a
 
-in
 let isPossible sun sizeArrays action =
     (match getTarget action with
     | None -> true
     | Some t -> not (getTree t).isdormant) && getPrice sizeArrays action <= sun
+and canPay player sun action = getPrice playerTrees.(player) action <= sun
 in
 
+let getBestPossibleSeed activeTrees enemySeed player day=
+        let test x = match enemySeed with | None -> false | Some t -> t=x in
+        let rec aux = function
+            | [] -> (WAIT, neg_infinity), (WAIT, neg_infinity)
+            | t :: ts -> List.fold_left
+                (fun (((_, accS) as acc),((_, accS2) as acc2)) x -> if richness x > 0 && (test x || getTreeOpt x = None) then
+                let score = getSeedScore player day (SEED (t.pos, x)) in (if score > accS then (x, score) else acc)
+                , (if richness x = 3 && score > accS2 then (x, score) else acc2)
+                else acc, acc2)
+                (aux ts) @@ getNearTiles t.pos t.size
+        in match aux activeTrees with
+            | (WAIT, _), _ -> None, None
+            | (a, _), (WAIT, _) -> Some a, None
+            | (a,_), (b, _) -> Some a, Some b
+
+in
+let getMCTSActions player oldSeed sun =
+    if sun = 0 then (
+        if playerTrees.(player).(0) > 0 then RndQ.create 1 [|WAIT|]
+        else  (
+            match getBestPossibleSeed playerActiveTrees oldSeed with
+                | None, _ -> RndQ.create 1 [|WAIT|]
+                | Some a, None -> RndQ.create 2 [|WAIT,a|]
+                | Some a, Some b -> RndQ.create 3 [|WAIT, a, b|]
+        )
+    )
+    else begin
+        let playerActiveTrees = getPlayerActiveTrees player in
+        let r = Array.make (3 + getPlayerTreeCount player) WAIT in
+        let rec aux i = function
+            | [] -> if sun >= playerTrees.(player).(0) then begin
+                        match getBestPossibleSeed playerActiveTrees oldSeed with
+                            | None, _ -> i
+                            | Some a, None -> r.(i) <- a; i+1
+                            | Some a, Some b -> r.(i) <- a; r.(i+1) <- b; i+2
+                        end else i
+            | t :: ts -> let action = if t.size < 3 then GROW t.pos else COMPLETE t.pos
+                in if canPay player sun action then r.(i) <- action; aux (i+1) ts else aux i ts;
+        in let size = aux 0 in RndQ.create (size+1) r
+    end
+in
 (** ________________Monte Carlo Tree Search ________________**)
 
 
 (* TODO deal with 2 seed turns *)
-let performAction playerId = function
+let performAction playerId treeArray playerTrees = function
     | WAIT -> ()
     | GROW t -> let tree = treeArray.(t) in tree.size <- tree.size + 1; tree.isdormant <- true;
         playerTrees.(playerId).(tree.size) <- playerTrees.(playerId).(tree.size) - 1;
         playerTrees.(playerId).(tree.size+1) <- playerTrees.(playerId).(tree.size + 1) + 1;
     | SEED s, e -> let treeS, treeE = treeArray.(s), treeArray.(e) in treeS.isdormant <- true; treeE.isdormant <- true;
-        treeE.size <- 0; treeE.owner <- playerId; playerTrees.(playerId).(0) <- playerTrees.(playerId).(0) + 1;
+        if treeE.size > 0 then failwith "plant on another tree" else begin
+            if treeE.size = 0 then (
+                assert(playerId=1);
+                treeE.size <- -1; playerTrees.(1-playerId).(0) <- playerTrees.(1-playerId).(0) - 1;
+            ) else (
+                treeE.size <- 0; treeE.owner <- playerId;
+                playerTrees.(playerId).(0) <- playerTrees.(playerId).(0) + 1;
+            )
+        end
     | COMPLETE t -> treeArray.(t).size <- -1; playerTrees.(playerId).(3) <- playerTrees.(playerId).(3) - 1;
-and cancelAction playerId = function
+and undoAction playerId = function
     | WAIT -> ()
     | GROW t -> let tree = treeArray.(t) in tree.size <- tree.size - 1; tree.isdormant <- false;
         playerTrees.(playerId).(tree.size) <- playerTrees.(playerId).(tree.size) - 1;
-        playerTrees.(playerId).(tree.size-1) <- playerTrees.(playerId).(tree.size + 1) + 1;
+        playerTrees.(playerId).(tree.size-1) <- playerTrees.(playerId).(tree.size - 1) + 1;
     | SEED s, e -> let treeS, treeE = treeArray.(s), treeArray.(e) in treeS.isdormant <- false; treeE.isdormant <- false;
-        treeE.size <- -1; playerTrees.(playerId).(0) <- playerTrees.(playerId).(0) - 1;
+        if treeE.size = 0 then (
+            treeE.size <- -1; playerTrees.(playerId).(0) <- playerTrees.(playerId).(0) - 1
+        ) else (
+            assert (playerId = 1 && treeE.size = -1)
+        )
     | COMPLETE t -> let tree = treeArray.(t) in tree.size <- 3; tree.owner <- playerId;
         playerTrees.(playerId).(3) <- playerTrees.(playerId).(3) + 1;
 and dayReset = Array.iter (fun x -> x.isdormant <- false) treeArray
@@ -219,6 +256,25 @@ and random = function | [] -> raise Not_found | x :: _ -> x
 and getRoot = function | ROOT r | N (r,_) -> r
 and getFather = function | ROOT _ -> raise Invalid_argument "no father for root" | N (_,x) -> x.father
 in
+let getAction = function | ROOT _ -> failwith "no action for root" | N (_, {action;_}) -> action in
+let shadowArray = Array.make numberofcells (0) in
+let addShadow tree dir =
+    let rec aux pos depth = if depth <= tree.size then (
+        let p = (getNeighbours pos).(dir) in shadowArray.(p) <- max shadowArray.(p) tree.size;
+        aux p (depth + 1)
+     )
+    in aux tree.pos 1
+in
+
+let updateShadow dir = mapInPlace (fun _ -> 0) shadowArray;
+    Array.iter (fun x -> if t.size > 0 then addShadow x dir) treeArray;
+in
+let getIncomes day = updateShadow (getDir day);
+    let a1,a2, _ = Array.fold_left (fun ((acc1,acc2),i) x ->(if t.size > shadowArray.(i)
+        then (if t.owner = 0  then t.size+acc1, acc2 else acc1, t.size+acc2) else acc1,acc2), i+1) ((0,0),0) treeArray
+    in a1, a2
+in
+
 let ucb1 node = let r = getRoot node andin
      r.win /. r.visit +. (2. *. log /. r.visit)**.5
 in
@@ -231,34 +287,120 @@ let chooseNode = function
                 )
             | [] -> accL, accLen
         in let l, size = aux (ucb1 x) [x] 1 in List.nth l (Random.int size)
-let expend node = let root = getRoot node in
-(*TODO chosen action must influence playerScores, playerSUns and nutrients*)
-(*TODO as for seed we have to reduce nutrients 1 times on 2 *)
-    let gameState =
-        match node with
-            | R r -> r.game
-            | N ({game;_}, {action;_}) -> if action = WAIT then (
-                    if game.opponentActive then {activePlayer = 1 - game.activePlayer; opponentActive=false; day=game.day;
-                    playerScore = game.playerScore; playerSuns}
-                    else
-                ) else r.game.opponentActive
-    let action = RndQ.take r.unexplored in
+in
+let getWinner (sun1, sun2) (score1, score2) trees =
+    let s = (1. +. f (compare (sun1/3 + score1) (sun2/3 + score2))) /. 2. in
+    if s = 0.5 then (1. +. f (compare (getPlayerTreeCount 0 trees) (getPlayerTreeCount 1 trees))) /. 2. else s
+in
+(** playout node oldSeed *)
+let playout node oldSeed =
+    initPOArrays();
+    let nodeGame = (getRoot node).game in
+    let initPlayer = nodeGame.activePlayer in
+    let rec aux game oldSeed lastAction =
+        let p = game.activePlayer in
+        let actions = getMCTSActions p oldSeed (getT p game.playerSuns) in
+        let action = RndQ.take actions in
+        let activePlayer, opponentActive, day, playerSuns =
+            if action = WAIT then (
+                if game.opponentActive then 1 - game.activePlayer, false, game.day, game.playerSuns
+                else 0, true, game.day+1, game.playerSuns ++ if game.day > maxDay then 0, 0
+                    else getIncomes (game.day+1) (* next game day *)
+            ) else (
+                (if r.opponentActive then 1 - game.activePlayer else game.activePlayer),
+                game.opponentActive, game.day, game.playerSuns
+            )
 
-    r.sons <- N ({visit=0.; })
+        in if day > maxDay then (
+            let w = getWinner in if initPlayer = 0 then w else 1. - w
+        ) else (
+            let bonus, nutrients =
+                match action with
+                    | COMPLETE t -> let nut = game.nutrients +
+                        (match oldA with | Some (COMPLETE _) when activePlayer=1 && game.activePlayer = 0 -> 1 | _ -> 0)
+                        in (richBonus t) + nut, game.nutrients-1
+                    | _ -> 0, game.nutrients
+            in
+            let playerScores = game.playerScores ++ if activePlayer=0 then bonus,0 else 0,bonus
+            performAction treeArrayPO playerTreesPO action; aux {activePlayer; opponentActive; day; playerScores; playerSuns}
+        )
+    in aux nodeGame oldSeed
+in
+
+
+
+
+
+let expend node = let root = getRoot node in
+    let game = match node with | N({game; _},_) | R {game; _} -> game in
+
+    let activePlayer, opponentActive, day, playerSuns =
+        match node with
+            | N (_, {action=WAIT;_}) ->
+                    if game.opponentActive then
+                        1 - game.activePlayer, false, game.day, game.playerSuns
+                    else 0, true, game.day+1, game.playerSuns ++ if game.day > maxDay then 0, 0
+                    else getIncomes (game.day+1) (* next game day *)
+            | R _ -> game.activePlayer, game.opponentActive, game.day, game.playerSuns
+            | N _ -> (if r.opponentActive then 1 - game.activePlayer else game.activePlayer),
+                            game.opponentActive, game.day, game.playerSuns
+    in
+
+    let action = RndQ.take r.unexplored in
+    let playerSuns = initPlayerSuns ++ (if activePlayer=0 then -getPrice action, 0 else 0, -getPrice action) in
+    assert (let x, y = playerSuns in x>=0 && y>=0);
+    let oldA = (match node with | N (_, {action=SEED _ as a}) | N (_, {action=COMPLETE _ as a}) -> Some a | _ -> None)
+    in
+    let bonus, nutrients =
+        match action with
+            | COMPLETE t -> let nut = game.nutrients +
+                (match oldA with | Some (COMPLETE _) when activePlayer=1 && game.activePlayer=0-> 1 | _ -> 0)
+                in (richBonus t) + nut, game.nutrients-1
+            | _ -> 0, game.nutrients
+    in
+    let playerScores = game.playerScores ++ if activePlayer=0 then bonus,0 else 0,bonus
+    in
+    performAction treeArray playerTrees action;
+    let oldSeed = match oldA with Some SEED (x, y) when activePlayer=1 -> Some y | _ -> None in
+    let game = {activePlayer; opponentActive; day; playerScores; playerSuns; nutrients} and
+        unexplored = getMCTSActions activePlayer oldSeed (getT activePlayer playerSuns)
+    in
+    let newNode = N ({visit=0.;win=0.; unexplored; sons=0; game}, {action; father=node}) in
+    r.sons <- newNode :: r.sons;
+    retropropagation @@ if day > maxDay then (getWinner playerSuns playerScores) else playout newNode oldSeed;
+
+in
+let rec retropropagation win = function
+    | ROOT r -> r.visit <- r.visit + 1.; r.win <- r.win +. win;
+    | N (r,{action; father}) -> r.visit <- r.visit + 1.;
+        r.win <- r.win +.  win; undoAction action;
+            retropropagation (if r.activePlayer = (getRoot father).activePlayer then win else 1. -. win) father;
+in
 let rec selection n =
     (match n with
         | ROOT _ -> ()
-        | N (_, {action;_}) -> performAction action);
+        | N (_, {action;_}) ->  performAction treeArray playerTrees action);
     let r = getRoot n in
     if RndQ.is_empty r.unexplored then selection @@ chooseNode r.sons
     else expend n
-
+in
 
 
 let monteCarloSearch eval gameState actionMod initActions limitTime=
     let firstAction = WAIT in
     let mcTree = ROOT {unexplored=initActions; sons=[]; visit=0; win=0;lose=0;} in
     while Sys.time () < limitTime do
+        selection mcTree;
+    done;
+    match (getRoot mcTree).sons with
+        | [] -> failwith "empty sons"
+        | N ({visit;win;_}, {action;_}) :: xs -> let acRes, winRate = List.fold_left (fun (accAction, winrate) as acc -> function
+            | N ({visit;win;_}, {action;_}) -> let ratio = win/.visit in if ratio > winrate then action, ratio else acc
+            | _ -> failwith "Root in root sons")  (action, win /. visit)  xs in prerr_endline @@
+                Printf.sprintf "Node win ratio : %f, action : %s" winRate (toString acRes); acRes, winRate
+        | _ -> failwith "Root in root sons"
+in
+
 
 
 
