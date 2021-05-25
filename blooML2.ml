@@ -192,10 +192,10 @@ while true do
         match a with
         | COMPLETE t -> let nb3 = sizeCount.(3) in -. 4. +. 20. ** ((dayf/. maxDayf)**2.) +.
             (if nb3>2 then f nb3 else 0.)+. (if day=maxDay then 10. else (min 0. (4. *.(1. -. enTreeRatio))))
-            +. 2. +.  getDiffF (getTree t) (makeSeed t) 2 (min 2 (maxDay-day)) +. max 0. (f sun -. 5.),
+            +. 2. +.  getDiffF (getTree t) (makeSeed t) (min 2 (maxDay-day)) day +. max 0. (f sun -. 5.),
             f (richBonus t)
         | SEED (x,y) -> if maxDay - day < 3 then -1. , 0. else (if day <= 1 then 0. else 10.) *. (exp (-.2.4 *.(f sizeCount.(0))**2.))
-        , 0.01 *. exp (5. *.(dayf /. maxDayf)**1.7) *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
+        , 0.01 *. exp (5. *.(dayf /. maxDayf)**2.) *. f(richBonus y) +. 2. *.getPotentialAllyShadow y
         | GROW t ->let tree = getTree t in let size = tree.size in if maxDay - day + size < 3 then -1. , 0. else 5. +. 2. *.(f size -. 1.5)*.dayf/.maxDayf -. f sizeCount.(size+1)
          +. 2. +. getDiffF tree ({pos=t; size=size + 1; ismine=true; isdormant=true}) (min 2 (maxDay-day)) day , f (richBonus t)
         | WAIT -> 0., 0.

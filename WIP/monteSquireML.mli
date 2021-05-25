@@ -35,8 +35,9 @@ val getDiff : tree -> tree -> int -> int -> int
 (** [getDiff treeInit newTree turns day] returns the difference of incomes for the turns next turns if
 treeInit is replaced per newTree*)
 
-val getMCTSActions : int -> action option -> int -> RndQ.t
-(** [getMCTSActions player oldSeed sun] returns the possible action for player knowing if the opponent seeded last turn *)
+val getMCTSActions : int -> int option -> int -> mutableTree array -> int -> RndQ.t
+(** [getMCTSActions player oldSeed sun treeArray] returns the possible action for player knowing
+if the opponent seeded last turn and the treeArray of the current state *)
 
 val mapInPlace : ('a  -> 'a) -> 'a array -> unit
 (** [mapInPlace f arr] change each element a of arr into f a *)
@@ -45,4 +46,4 @@ val copyInPlace : 'a array -> 'a array -> unit
 (** [copyInPlace model cont] copy each element of model in cont *)
 
 val getWinner : int*int -> int*int -> int array array -> float
-(** [getWinner playerSuns playerScores trees] returns 1. if player 0 won, 0.5 if it's a draw and 0. if player 1 won *)
+(** [getWinner playerSuns playerScores playerTrees] returns 1. if player 0 won, 0.5 if it's a draw and 0. if player 1 won *)
